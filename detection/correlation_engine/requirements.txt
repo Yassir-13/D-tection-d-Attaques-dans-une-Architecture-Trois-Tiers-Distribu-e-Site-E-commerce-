@@ -1,0 +1,4 @@
+confluent-kafka==2.4.0
+pydantic==2.7.1
+prometheus-client==0.20.0
+redis==5.0.4

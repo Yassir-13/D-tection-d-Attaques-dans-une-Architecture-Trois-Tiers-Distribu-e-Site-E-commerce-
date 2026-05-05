@@ -174,7 +174,8 @@ services:
   # ─── Moteur de corrélation CEP ────────────────────────────────────────────
   correlation_engine:
     build:
-      context: ./detection/correlation_engine
+      context: ./detection
+      dockerfile: correlation_engine/Dockerfile
     depends_on:
       kafka:
         condition: service_healthy
