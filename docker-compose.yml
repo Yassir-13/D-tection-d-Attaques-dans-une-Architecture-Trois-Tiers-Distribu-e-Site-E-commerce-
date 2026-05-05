@@ -1,0 +1,224 @@
+services:
+
+  # ─── Tier 1 — Serveur Web ──────────────────────────────────────────────────
+  nginx:
+    build:
+      context: ./detection/infrastructure/nginx
+    ports:
+      - "8000:80"
+    environment:
+      PARANOIA: 1
+      ANOMALY_INBOUND: 10
+      ANOMALY_OUTBOUND: 4
+      ALLOWED_METHODS: "GET HEAD POST PUT PATCH DELETE OPTIONS"
+      MAX_NUM_ARGS: 255
+      BACKEND: "http://laravel:9000"
+    volumes:
+      - react_static:/var/www/react:ro
+      - nginx_logs:/var/log/nginx
+    depends_on:
+      - laravel
+    networks:
+      - app_net
+
+  # ─── Tier 2 — Application ──────────────────────────────────────────────────
+  laravel:
+    build:
+      context: ./Backend
+    env_file: .env.docker
+    volumes:
+      - laravel_logs:/var/www/html/storage/logs
+    depends_on:
+      mysql:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "php-fpm", "-t"]            # FIX: teste PHP-FPM, pas artisan
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - app_net
+
+  # ─── Tier 3 — Données ──────────────────────────────────────────────────────
+  mysql:
+    image: mysql:8.0
+    env_file: .env.docker                        # FIX: lit les variables depuis .env.docker
+    environment:
+      MYSQL_ROOT_PASSWORD: root_secret           # FIX: valeurs explicites (pas d'interpolation)
+      MYSQL_DATABASE: ecommerce
+      MYSQL_USER: app_user
+      MYSQL_PASSWORD: app_secret
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - mysql_logs:/var/log/mysql
+      - ./detection/infrastructure/mysql/my.cnf:/etc/mysql/conf.d/custom.cnf:ro
+      - ./detection/infrastructure/mysql/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-proot_secret"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - app_net
+
+  # ─── React — Build statique (one-shot) ────────────────────────────────────
+  react_build:
+    build:
+      context: ./Front/Front
+      args:
+        VITE_API_URL: http://localhost:8000/api
+        VITE_BASE_URL: http://localhost:8000
+    volumes:
+      - react_static:/output                    # FIX: CMD copie le dist vers /output
+    restart: "no"
+    networks:
+      - app_net
+
+  # ─── Kafka (KRaft — sans Zookeeper) ───────────────────────────────────────
+  kafka:
+    image: confluentinc/cp-kafka:7.6.1
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_LOG_RETENTION_HOURS: 24
+      CLUSTER_ID: "MkU3OEVBNTcwNTJENDM2Qk"
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+    networks:
+      - app_net
+
+  # ─── Kafka Topics Init (one-shot) ─────────────────────────────────────────
+  kafka_init:
+    image: confluentinc/cp-kafka:7.6.1
+    depends_on:
+      kafka:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "-c"]
+    command: >
+      "kafka-topics --create --if-not-exists --bootstrap-server kafka:9092 --partitions 3 --replication-factor 1 --topic alerts.web &&
+       kafka-topics --create --if-not-exists --bootstrap-server kafka:9092 --partitions 3 --replication-factor 1 --topic alerts.app &&
+       kafka-topics --create --if-not-exists --bootstrap-server kafka:9092 --partitions 3 --replication-factor 1 --topic alerts.db &&
+       kafka-topics --create --if-not-exists --bootstrap-server kafka:9092 --partitions 3 --replication-factor 1 --topic alerts.correlated &&
+       echo 'Topics créés.'"
+    restart: "no"
+    networks:
+      - app_net
+
+  # ─── Redis — State store CEP ───────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - app_net
+
+  # ─── Agents de détection ──────────────────────────────────────────────────
+  web_agent:
+    build:
+      context: ./detection/agents/web_agent
+    volumes:
+      - nginx_logs:/var/log/nginx:ro
+    depends_on:
+      kafka:
+        condition: service_healthy
+    ports:
+      - "9101:9101"
+    networks:
+      - app_net
+
+  app_agent:
+    build:
+      context: ./detection/agents/app_agent
+    volumes:
+      - laravel_logs:/var/log/laravel:ro
+    depends_on:
+      kafka:
+        condition: service_healthy
+    ports:
+      - "9102:9102"
+    networks:
+      - app_net
+
+  db_agent:
+    build:
+      context: ./detection/agents/db_agent
+    volumes:
+      - mysql_logs:/var/log/mysql:ro
+    depends_on:
+      kafka:
+        condition: service_healthy
+    ports:
+      - "9103:9103"
+    networks:
+      - app_net
+
+  # ─── Moteur de corrélation CEP ────────────────────────────────────────────
+  correlation_engine:
+    build:
+      context: ./detection/correlation_engine
+    depends_on:
+      kafka:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "9104:9104"
+    networks:
+      - app_net
+
+  # ─── Observabilité ────────────────────────────────────────────────────────
+  prometheus:
+    image: prom/prometheus:v2.52.0
+    volumes:
+      - ./detection/infrastructure/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9090:9090"
+    networks:
+      - app_net
+
+  grafana:
+    image: grafana/grafana:10.4.3
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: admin
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./detection/infrastructure/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./detection/infrastructure/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+    networks:
+      - app_net
+
+# ─── Volumes ──────────────────────────────────────────────────────────────────
+volumes:
+  mysql_data:
+  mysql_logs:
+  nginx_logs:
+  laravel_logs:
+  react_static:
+  kafka_data:
+  redis_data:
+  grafana_data:
+
+# ─── Réseau interne ───────────────────────────────────────────────────────────
+networks:
+  app_net:
+    driver: bridge

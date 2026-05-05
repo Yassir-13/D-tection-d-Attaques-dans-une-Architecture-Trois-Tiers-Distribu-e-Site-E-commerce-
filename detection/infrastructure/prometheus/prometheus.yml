@@ -1,0 +1,21 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+
+  - job_name: 'web_agent'
+    static_configs:
+      - targets: ['web_agent:9101']
+
+  - job_name: 'app_agent'
+    static_configs:
+      - targets: ['app_agent:9102']
+
+  - job_name: 'db_agent'
+    static_configs:
+      - targets: ['db_agent:9103']
+
+  - job_name: 'correlation_engine'
+    static_configs:
+      - targets: ['correlation_engine:9104']
