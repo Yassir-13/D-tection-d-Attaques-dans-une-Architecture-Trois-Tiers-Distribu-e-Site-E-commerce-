@@ -1,0 +1,118 @@
+{
+  "__inputs": [],
+  "__requires": [],
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "id": 1,
+      "title": "Risk Score — Web Tier",
+      "type": "gauge",
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 0 },
+      "datasource": "Prometheus",
+      "fieldConfig": {
+        "defaults": {
+          "min": 0, "max": 100,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 40 },
+              { "color": "orange", "value": 70 },
+              { "color": "red", "value": 90 }
+            ]
+          },
+          "unit": "none"
+        }
+      },
+      "targets": [{ "expr": "detection_risk_score{tier=\"web\"}", "legendFormat": "Web" }]
+    },
+    {
+      "id": 2,
+      "title": "Risk Score — App Tier",
+      "type": "gauge",
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 0 },
+      "datasource": "Prometheus",
+      "fieldConfig": {
+        "defaults": {
+          "min": 0, "max": 100,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 40 },
+              { "color": "orange", "value": 70 },
+              { "color": "red", "value": 90 }
+            ]
+          }
+        }
+      },
+      "targets": [{ "expr": "detection_risk_score{tier=\"app\"}", "legendFormat": "App" }]
+    },
+    {
+      "id": 3,
+      "title": "Risk Score — DB Tier",
+      "type": "gauge",
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 0 },
+      "datasource": "Prometheus",
+      "fieldConfig": {
+        "defaults": {
+          "min": 0, "max": 100,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 40 },
+              { "color": "orange", "value": 70 },
+              { "color": "red", "value": 90 }
+            ]
+          }
+        }
+      },
+      "targets": [{ "expr": "detection_risk_score{tier=\"db\"}", "legendFormat": "DB" }]
+    },
+    {
+      "id": 4,
+      "title": "Alertes par tier (rate 1m)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 8 },
+      "datasource": "Prometheus",
+      "targets": [
+        { "expr": "rate(detection_alerts_total{tier=\"web\"}[1m])", "legendFormat": "Web - {{attack_type}}" },
+        { "expr": "rate(detection_alerts_total{tier=\"app\"}[1m])", "legendFormat": "App - {{attack_type}}" },
+        { "expr": "rate(detection_alerts_total{tier=\"db\"}[1m])", "legendFormat": "DB - {{attack_type}}" }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Total alertes par sévérité",
+      "type": "bargauge",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+      "datasource": "Prometheus",
+      "targets": [
+        { "expr": "sum by (severity) (detection_alerts_total)", "legendFormat": "{{severity}}" }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "Alertes corrélées CEP",
+      "type": "stat",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+      "datasource": "Prometheus",
+      "targets": [
+        { "expr": "sum(detection_correlated_alerts_total)", "legendFormat": "Total corrélées" }
+      ]
+    }
+  ],
+  "refresh": "10s",
+  "schemaVersion": 38,
+  "tags": ["detection", "security"],
+  "time": { "from": "now-1h", "to": "now" },
+  "title": "Three-Tier Security Overview",
+  "uid": "tier-overview-001",
+  "version": 1
+}
