@@ -15,7 +15,7 @@ services:
       BACKEND: "http://laravel:9000"
     volumes:
       - react_static:/var/www/react:ro
-      - nginx_logs:/var/log/nginx
+      - nginx_logs:/logs
     depends_on:
       - laravel
     networks:
@@ -131,9 +131,10 @@ services:
   # ─── Agents de détection ──────────────────────────────────────────────────
   web_agent:
     build:
-      context: ./detection/agents/web_agent
+      context: ./detection
+      dockerfile: agents/web_agent/Dockerfile
     volumes:
-      - nginx_logs:/var/log/nginx:ro
+      - nginx_logs:/logs:ro
     depends_on:
       kafka:
         condition: service_healthy
@@ -144,7 +145,8 @@ services:
 
   app_agent:
     build:
-      context: ./detection/agents/app_agent
+      context: ./detection
+      dockerfile: agents/app_agent/Dockerfile
     volumes:
       - laravel_logs:/var/log/laravel:ro
     depends_on:
@@ -157,7 +159,8 @@ services:
 
   db_agent:
     build:
-      context: ./detection/agents/db_agent
+      context: ./detection
+      dockerfile: agents/db_agent/Dockerfile
     volumes:
       - mysql_logs:/var/log/mysql:ro
     depends_on:
